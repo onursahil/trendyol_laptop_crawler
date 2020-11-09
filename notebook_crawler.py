@@ -10,6 +10,8 @@ import fasttext.util
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk, scan
 from elasticsearch_dsl import Search, Q
+from ast import literal_eval
+
 
 agent = {"User-Agent":'Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/59.0.3071.115 Safari/537.36'}
 
@@ -23,8 +25,8 @@ except:
 def index_to_elasticsearch(product_df):
     print("\nSTART INDEXING TO ELASTICSEARCH")
 
-    if '_id' in product_df.colums:
-        del product_df['_id']
+    for index, row in product_df.iterrows():
+        row['item_vectors'] = literal_eval(row['item_vectors'])
 
     es = Elasticsearch(['http://localhost:9200'], http_auth=('elastic', 'changeme'))
 
@@ -43,33 +45,33 @@ def index_to_elasticsearch(product_df):
             "product_information": {
             "type": "text"
             },
-            "product_cpu_type": {
-            "type": "text"
-            },
-            "product_ram": {
-            "type": "text"
-            },
-            "product_display_card_type": {
-            "type": "text"
-            },
-            "product_ssd_capacity": {
-            "type": "text"
-            },
-            "product_display_card_memory": {
-            "type": "text"
-            },
-            "product_cpu_model": {
-            "type": "text"
-            },
-            "product_cpu_generation": {
-            "type": "text"
-            },
-            "product_capacity": {
-            "type": "text"
-            },
-            "product_os": {
-            "type": "text"
-            },
+            # "product_cpu_type": {
+            # "type": "text"
+            # },
+            # "product_ram": {
+            # "type": "text"
+            # },
+            # "product_display_card_type": {
+            # "type": "text"
+            # },
+            # "product_ssd_capacity": {
+            # "type": "text"
+            # },
+            # "product_display_card_memory": {
+            # "type": "text"
+            # },
+            # "product_cpu_model": {
+            # "type": "text"
+            # },
+            # "product_cpu_generation": {
+            # "type": "text"
+            # },
+            # "product_capacity": {
+            # "type": "text"
+            # },
+            # "product_os": {
+            # "type": "text"
+            # },
             "product_title_vector": {
             "type": "dense_vector",
             "dims": 300
@@ -80,6 +82,16 @@ def index_to_elasticsearch(product_df):
 
     es.indices.create(index='trendyol_laptop', body=es_index, ignore=[400])
 
+    # "product_cpu_type": row['İşlemci Tipi'],
+    # "product_ram": row['Ram (Sistem Belleği)'],
+    # "product_display_card_type": row['Ekran Kartı Tipi'],
+    # "product_ssd_capacity": row['SSD Kapasitesi'],
+    # "product_display_card_memory": row['Ekran Kartı Hafızası'],
+    # "product_cpu_model": row['İşlemci Modeli'],
+    # "product_cpu_generation": row['İşlemci Nesli'],
+    # "product_capacity": row['Kapasite'],
+    # "product_os": row['İşletim Sistemi'],
+
     def getQuotes():
         for index, row in product_df.iterrows():
             yield {
@@ -88,15 +100,6 @@ def index_to_elasticsearch(product_df):
                 "product_category": row['category'],
                 "product_title": row['title'],
                 "product_information": row['information'],
-                "product_cpu_type": row['İşlemci Tipi'],
-                "product_ram": row['Ram (Sistem Belleği)'],
-                "product_display_card_type": row['Ekran Kartı Tipi'],
-                "product_ssd_capacity": row['SSD Kapasitesi'],
-                "product_display_card_memory": row['Ekran Kartı Hafızası'],
-                "product_cpu_model": row['İşlemci Modeli'],
-                "product_cpu_generation": row['İşlemci Nesli'],
-                "product_capacity": row['Kapasite'],
-                "product_os": row['İşletim Sistemi'],
                 "product_title_vector": row['item_vectors']
             }
     bulk(client=es, actions = getQuotes(), request_timeout = 120)
@@ -112,14 +115,17 @@ def create_vectors(product_df):
     for i in range(len(item_title)):
         vector = ft.get_sentence_vector(item_title[i])
         itemname_vectors.append(list(vector))
-    
+
+    print("VECTORS CREATED...")
     return itemname_vectors
 
 
-def write_to_file(product):
+def create_dataframe(product):
     print("\nWRITING TO FILE...")
     product_df = pd.DataFrame(product)
-    product_df.to_csv('trendyol_laptop_vectors.csv')
+
+    if '_id' in product_df.columns:
+        del product_df['_id']
 
     return product_df
 
@@ -234,11 +240,16 @@ def infinite_rolling(START_PAGE):
 def main():
     START_PAGE = "https://www.trendyol.com/laptop"
     pi = infinite_rolling(START_PAGE)
+
     product = crawl(START_PAGE, pi)
-    product_df = write_to_file(product)
+    product_df = create_dataframe(product)
+
     item_vectors = create_vectors(product_df)
+
     product_df['item_vectors'] = item_vectors
+    product_df.to_csv('trendyol_laptop_vectors.csv')
     print("Dataframe after vectors\n", product_df)
+
     index_to_elasticsearch(product_df)
 
 if __name__ == "__main__":
